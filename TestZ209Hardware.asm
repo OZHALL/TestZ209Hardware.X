@@ -91,7 +91,9 @@ IncrementDone:
 
 Output2DAC:
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
-
+	call Long_Delay
+	call Long_Delay
+	call Long_Delay
 	call Long_Delay
 	call Long_Delay
 	call Long_Delay
