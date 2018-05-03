@@ -128,13 +128,94 @@ Is_On					; Executes if the LED is on
 ; To setup a particular pin, we need to put values into the corresponding Analog Select
 ; register, and Tri-state register.  This ensures that our pin will be an output, and that
 ; it will be a digital output.
+	cblock
+	    GIE_STATE	;variable
+	endc
 Init_Ports
+; convert working C code from DualEG (mcc generated) to ASM
+;void PIN_MANAGER_Initialize(void)
 	movlb 0
-	clrf PORTC
+	clrf LATA   ;    LATA = 0x00;
+	movlw 0x20
+	movwf LATB  ;    LATB = 0x20;  
+	clrf LATC   ;    LATC = 0x00; 
+
 	movlb d'30'
-	clrf ANSELC	; Make Port C all Digital
-	movlb 0
-	clrf TRISC	; Make Port C all output
+	movlw 0xFF
+	movwf TRISA ;    TRISA = 0xFF;
+	clrf TRISB  ;    TRISB = 0x00;
+	movlw 0x1F
+	movwf TRISC ;    TRISC = 0x1F;
+
+;   analog/digital (GPIO)
+;	movlb d'30'
+	movlw 0xE4
+	movwf ANSELC	;    ANSELC = 0xE4;
+	movlw 0x1F
+	movwf ANSELB	;    ANSELB = 0x1F;
+	movlw 0xFF
+	movwf ANSELA	;    ANSELA = 0xFF;
+
+;   weak pullup
+;	movlb d'30'
+	clrf WPUE   ;    WPUE = 0x00;
+	movlw 0xE0
+	movwf WPUB  ;    WPUB = 0xE0;
+	clrf WPUA   ;    WPUA = 0x00;
+	clrf WPUC   ;    WPUC = 0x00;
+
+;   open drain
+;	movlb d'30'
+	clrf ODCONA ;    ODCONA = 0x00;
+	clrf ODCONB ;    ODCONB = 0x00;
+	clrf ODCONC ;    ODCONC = 0x00;   
+
+;   preserve the GIE state - global interrupt enable
+;    bool state = (unsigned char)GIE;
+	movf  INTCON,w
+	andlw b'10000000'   ;isolate bit 7
+	movwf GIE_STATE
+;    GIE = 0;	shut it off for to do the config
+	movf  INTCON,w
+	andlw b'01111111'   ;clear bit 7
+	movwf INTCON
+	
+;   PPSLOCK takes a special sequence to unlock
+	movlb d'29'
+	movlw 0x55
+	movwf PPSLOCK ;    PPSLOCK = 0x55;
+	movlw 0xAA
+	movwf PPSLOCK ;    PPSLOCK = 0xAA;
+;   unlock to make a change (note PPSLOCKED is bit 0, the only active bit in PPSLOCK byte
+	clrf PPSLOCK  ;    PPSLOCKbits.PPSLOCKED = 0x00; // unlock PPS
+
+;	movlb d'29'
+	movlw 0x13
+	movwf SSP1DATPPS ;    SSP1DATPPSbits.SSP1DATPPS = 0x13;   //RC3->MSSP1:SDA1;
+	movlw 0x14
+	movwf SSP1CLKPPS ;    SSP1CLKPPSbits.SSP1CLKPPS = 0x14;   //RC4->MSSP1:SCL1;
+	
+	movlb d'30'
+	movlw 0x15
+	movwf RC3PPS ;    RC3PPS = 0x15;   //RC3->MSSP1:SDA1;
+	movlw 0x14
+	movwf RC4PPS ;    RC4PPS = 0x14;   //RC4->MSSP1:SCL1
+	
+;   PPSLOCK takes a special sequence to lock
+	movlb d'29'
+	movlw 0x55
+	movwf PPSLOCK ;    PPSLOCK = 0x55;
+	movlw 0xAA
+	movwf PPSLOCK ;    PPSLOCK = 0xAA;
+	
+	movlw 0x01
+	movwf PPSLOCK ;    PPSLOCKbits.PPSLOCKED = 0x01; // lock PPS
+;
+;    GIE = state;
+	movf  INTCON,w	    ; get the current value
+	iorwf GIE_STATE	    ; OR with isolated bit 7
+	movwf INTCON	    ; store it
+;}  
 
     ; set up SPI, following the MCC generated C code: void SPI2_Initialize(void)
 	movlb d'3'	    ; select the bank
@@ -146,7 +227,7 @@ Init_Ports
 	; SSPADD 0; 
 	clrf SSP2ADD    ;SSP2ADD = 0x00;
 	return
-
+	
 ; convert working C code from DualEG (mcc generated) to ASM
 ;void OSCILLATOR_Initialize(void)
 ;{
