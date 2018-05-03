@@ -1,6 +1,7 @@
 ; TODO INSERT CONFIG CODE HERE USING CONFIG BITS GENERATOR
 ; ozh - note I followed the configurations from another project which was MCC generated
-
+;2018-05-03 ozh - updated port_init with MCC generated pin_manager.  It compiles, but ...
+;		looks like I broke the funcdtionality.  Need to debug this new code.
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -102,7 +103,7 @@ Output2DAC:
 	call Long_Delay
 	call Long_Delay
 	call Long_Delay
-	
+		
 	call Toggle_LED
 
 	return
@@ -140,7 +141,7 @@ Init_Ports
 	movwf LATB  ;    LATB = 0x20;  
 	clrf LATC   ;    LATC = 0x00; 
 
-	movlb d'30'
+;	movlb 0
 	movlw 0xFF
 	movwf TRISA ;    TRISA = 0xFF;
 	clrf TRISB  ;    TRISB = 0x00;
@@ -148,7 +149,7 @@ Init_Ports
 	movwf TRISC ;    TRISC = 0x1F;
 
 ;   analog/digital (GPIO)
-;	movlb d'30'
+	movlb d'30'
 	movlw 0xE4
 	movwf ANSELC	;    ANSELC = 0xE4;
 	movlw 0x1F
@@ -189,6 +190,7 @@ Init_Ports
 ;   unlock to make a change (note PPSLOCKED is bit 0, the only active bit in PPSLOCK byte
 	clrf PPSLOCK  ;    PPSLOCKbits.PPSLOCKED = 0x00; // unlock PPS
 
+;   set up I2C on SSP1	
 ;	movlb d'29'
 	movlw 0x13
 	movwf SSP1DATPPS ;    SSP1DATPPSbits.SSP1DATPPS = 0x13;   //RC3->MSSP1:SDA1;
@@ -216,7 +218,7 @@ Init_Ports
 	iorwf GIE_STATE	    ; OR with isolated bit 7
 	movwf INTCON	    ; store it
 ;}  
-
+;   set up SPI on SSP2
     ; set up SPI, following the MCC generated C code: void SPI2_Initialize(void)
 	movlb d'3'	    ; select the bank
 	; SMP Middle; CKE Idle to Active; 
@@ -226,6 +228,8 @@ Init_Ports
 	movwf SSP2CON1
 	; SSPADD 0; 
 	clrf SSP2ADD    ;SSP2ADD = 0x00;
+	
+	movlb 0		; reset to bank 0
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
