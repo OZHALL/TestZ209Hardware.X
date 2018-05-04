@@ -2,6 +2,8 @@
 ; ozh - note I followed the configurations from another project which was MCC generated
 ;2018-05-03 ozh - updated port_init with MCC generated pin_manager.  It compiles, but ...
 ;		looks like I broke the funcdtionality.  Need to debug this new code.
+;2018-05-03 ozh - ANSELC configuration issue.  LEDs are digital pins, not analog
+;		  code works to flash LED
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -66,7 +68,7 @@ RES_VECT  CODE    0x0000            ; processor reset vector
 MAIN_PROG CODE                      ; let linker place main program
 
 START
-	call Osc_Init
+	call Init_Osc
 	call Init_Ports
 
 	; init variables
@@ -92,18 +94,15 @@ IncrementDone:
 
 Output2DAC:
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
+	
+	; test only, set up a delay for a flashing LED
+	movlw d'10'	    ;this literal inversely controls flash rate
+	movwf LOOP_COUNTER_2
+outerLoop:
 	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-	call Long_Delay
-		
+	decfsz LOOP_COUNTER_2
+	goto outerLoop
+	
 	call Toggle_LED
 
 	return
@@ -150,13 +149,13 @@ Init_Ports
 
 ;   analog/digital (GPIO)
 	movlb d'30'
-	movlw 0xE4
-	movwf ANSELC	;    ANSELC = 0xE4;
-	movlw 0x1F
-	movwf ANSELB	;    ANSELB = 0x1F;
+	movlw 0x04
+	movwf ANSELC	;    ANSELC = 0x04;
+	movlw 0x00
+	movwf ANSELB	;    ANSELB = 0x00;
 	movlw 0xFF
 	movwf ANSELA	;    ANSELA = 0xFF;
-
+	
 ;   weak pullup
 ;	movlb d'30'
 	clrf WPUE   ;    WPUE = 0x00;
@@ -170,7 +169,7 @@ Init_Ports
 	clrf ODCONA ;    ODCONA = 0x00;
 	clrf ODCONB ;    ODCONB = 0x00;
 	clrf ODCONC ;    ODCONC = 0x00;   
-
+	
 ;   preserve the GIE state - global interrupt enable
 ;    bool state = (unsigned char)GIE;
 	movf  INTCON,w
@@ -235,7 +234,7 @@ Init_Ports
 ; convert working C code from DualEG (mcc generated) to ASM
 ;void OSCILLATOR_Initialize(void)
 ;{
-Osc_Init
+Init_Osc
 	movlb d'17'
     ;// NOSC HFINTOSC; NDIV 1; 
     ;OSCCON1 = 0x60;
