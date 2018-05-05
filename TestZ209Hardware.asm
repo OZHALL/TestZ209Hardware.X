@@ -34,7 +34,8 @@
  CBLOCK 0x020
 	LOOP_COUNTER_1
 	LOOP_COUNTER_2
-	ledCounter
+	LEDCOUNTER
+	DACNUMBER
  ENDC
  ; 0x70-0x7F  Common RAM - Special variables available in all banks
  CBLOCK 0x070
@@ -51,14 +52,24 @@
 #define ZERO		STATUS,Z	; Zero Flag
 #define CARRY		STATUS,C	; Carry Flag
 #define BORROW		STATUS,C	; Borrow is the same as Carry
+#define NOT_CS		PORTB,5         ; RB5 
+#define BIT0 		b'00000001'
+#define BIT1 		b'00000010'
+#define BIT2 		b'00000100'
+#define BIT3 		b'00001000'
+#define BIT4 		b'00010000'
+#define BIT5 		b'00100000'
+#define BIT6 		b'01000000'
+#define BIT7 		b'10000000'
 #define STEPSIZE	0x10
 #define DAC0		0x00
-#define DAC1		0x01
+#define DAC1		BIT7
 #define SAVETOW		0x00
 #define SAVETOF		0x01
 #define USEACCESSBANK	0x00 ;untested
 #define USEBSR		0x01 ;untested
 #define LEDLAST		0x07 ; last LED on pin 7 of port C
+
  
 RES_VECT  CODE    0x0000            ; processor reset vector
     GOTO    START                   ; go to beginning of program
@@ -93,17 +104,58 @@ IncrementDone:
 	goto MainLoop                          ; loop forever
 
 Output2DAC:
+        ; pass in the DAC # via W
+        movwf DACNUMBER
+
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
+	movlb 0		; PORTB
+	bcf   NOT_CS	; Take ~CS Low
+	nop		; settling time
 	
-	; test only, set up a delay for a flashing LED
-	movlw d'10'	    ;this literal inversely controls flash rate
-	movwf LOOP_COUNTER_2
-outerLoop:
-	call Long_Delay
-	decfsz LOOP_COUNTER_2
-	goto outerLoop
+	movlb 3
+;    // Clear the Write Collision flag, to allow writing
+	bcf SSP2CON1,WCOL   ;    SSP2CON1bits.WCOL = 0;
+	; not sure (if/why) we need this
+	movf  SSP2BUF,w  ; Do a dummy read to clear flags
 	
-	call Toggle_LED
+	; first send high byte plus commands/configuration
+	movf OUTPUT_HI,w
+	andlw 0x0F	; we will only want least significant4 bits
+	;for DAC0 or DAC1 - dac # (bit 7) 
+	iorlw DACNUMBER	; clr or set bit based on DAC #
+	iorlw BIT4	; 0x10
+	iorlw BIT5	; set gain of 1
+	
+	; now W has the commands plus data bits 12-9
+	movwf SSP2BUF	; load the buffer
+WriteByteHiWait:
+	btfss	SSP2STAT, BF		; Wait while it sends
+	goto	WriteByteHiWait	
+
+	; not sure (if/why) we need this
+	movf  SSP2BUF,w  ; Do a dummy read to clear flags
+	; second send the low byte
+	movf OUTPUT_LO,w
+	movwf SSP2BUF	; load the buffer
+WriteByteLoWait:
+	btfss	SSP2STAT, BF		; Wait while it sends
+	goto	WriteByteLoWait	
+	
+	; end of write
+	movlb 0		; PORTB
+	bsf   NOT_CS	; Take ~CS high
+	nop		; settling time
+	
+
+;	; test only, set up a delay for a flashing LED
+;	movlw d'18'	    ;this literal inversely controls flash rate
+;	movwf LOOP_COUNTER_2
+;outerLoop:
+;	call Long_Delay
+;	decfsz LOOP_COUNTER_2
+;	goto outerLoop
+	
+	;call Toggle_LED
 
 	return
 
@@ -218,17 +270,25 @@ Init_Ports
 	movwf INTCON	    ; store it
 ;}  
 ;   set up SPI on SSP2
-    ; set up SPI, following the MCC generated C code: void SPI2_Initialize(void)
-	movlb d'3'	    ; select the bank
-	; SMP Middle; CKE Idle to Active; 
-	clrf SSP2STAT   ;SSP2STAT = 0x00;
-	; SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4; 250kHz
-	movlw 0x20	    ;SSP2CON1 = 0x20;
-	movwf SSP2CON1
-	; SSPADD 0; 
-	clrf SSP2ADD    ;SSP2ADD = 0x00;
+	call Init_SPI2	; SPI for DAC
 	
 	movlb 0		; reset to bank 0
+	return
+	
+; convert working C code from DualEG (mcc generated) to ASM
+Init_SPI2
+;    // Set the SPI2 module to the options selected in the User Interface
+	movlb 3
+;    // SMP Middle; CKE Idle to Active; 
+	clrf SSP2STAT   ;SSP2STAT = 0x00;
+;    
+;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
+	movlw 0x2A
+	movwf SSP2CON1	;SSP2CON1 = 0x2A;
+;    
+;    // SSPADD 24; 
+	movlw 0x18
+	movwf SSP2ADD	;SSP2ADD = 0x18;
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
