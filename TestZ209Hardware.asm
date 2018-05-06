@@ -96,11 +96,19 @@ MainLoop:
 	goto    IncrementDone   ; no overflow,we're done
 	incfsz  OUTPUT_HI,SAVETOF ; overflow, increment the upper
 	goto    IncrementDone   ; no overflow,we're done
-	call    Toggle_LED	    ; don't care about overflow of upper byte   
+	call    Toggle_LED	; don't care about overflow of upper byte   
 IncrementDone:
+	btfss	OUTPUT_HI,5	; see if rollover from 0x0F to 0x1F 
+	goto	Continue        ; not set, jump ahead
+	clrf	OUTPUT_HI	; if so reset whole value 
+	; note the above command basically does nothing except 
+	; reset the bits we ignore for MCP4922 purposes
+	call    Toggle_LED	; toggle at peak 
+Continue	
 	; output the 12 bit value to the DAC
 	movlw DAC0		    ; output to DAC0
 	call Output2DAC
+	;call Long_Delay
 	goto MainLoop                          ; loop forever
 
 Output2DAC:
@@ -122,9 +130,11 @@ Output2DAC:
 	movf OUTPUT_HI,w
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
-	iorlw DACNUMBER	; clr or set bit based on DAC #
-	iorlw BIT4	; 0x10
-	iorlw BIT5	; set gain of 1
+	;                 bit 15 A/B: DACA or DACB Selection bit
+	iorwf DACNUMBER	; clr or set bit based on DAC 
+	;               ; 0 = unbuffered - bit 14  VREF Input Buffer Control bit
+	iorlw BIT5	; set gain of 1 - bit 13 Output Gain Selection bit
+	iorlw BIT4	; 0x10 - bit 12 SHDN: Output Shutdown Control bit
 	
 	; now W has the commands plus data bits 12-9
 	movwf SSP2BUF	; load the buffer
@@ -253,6 +263,21 @@ Init_Ports
 	movwf RC3PPS ;    RC3PPS = 0x15;   //RC3->MSSP1:SDA1;
 	movlw 0x14
 	movwf RC4PPS ;    RC4PPS = 0x14;   //RC4->MSSP1:SCL1
+
+;   set up SPI on SSP2	
+	movlb d'29'
+	movlw 0x12
+	movwf SSP2DATPPS ;    SSP2DATPPSbits.SSP1DATPPS = 0x12;   //RB7->MSSP2:SPIDAT;
+	movlw 0x0E
+	movwf SSP2CLKPPS ;    SSP2CLKPPSbits.SSP1CLKPPS = 0x0E;   //RB6->MSSP2:SPICL1;
+	movlw 0x0E
+	movwf SSP2SSPPS  ;
+	
+	movlb d'30'
+	movlw 0x17
+	movwf RB7PPS ;    RB7PPS = 0x17;   //RB7->MSSP2:SPIDAT;
+	movlw 0x16
+	movwf RB6PPS ;    RB6PPS = 0x16;   //RB6->MSSP2:SPICL1;
 	
 ;   PPSLOCK takes a special sequence to lock
 	movlb d'29'
