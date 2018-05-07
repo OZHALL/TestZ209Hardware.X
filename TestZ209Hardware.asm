@@ -12,7 +12,8 @@
 ;       RA0 thru RA7(AN0-AN7) are all faders - analog inputs
 ;       RB0 thru RB4 are outputs driving the LEDs on the faders (0-4)
 ;       RC5 thru RC7 are outputs driving the LEDs on the faders (5-7)  
-;2018-05-06 ozh - debug outputting to both DAC0 and DAC1    
+;2018-05-06 ozh - debug outputting to both DAC0 and DAC1  
+;2018-05-07 ozh - hand optimize where I can
     
 ; PIC16F18855 Configuration Bit Settings
 
@@ -97,23 +98,28 @@ START
 	clrf OUTPUT_LO  ;	both bytes
 
 	;BANKSEL 
-     
+	movlb 0		; 
+	
 ;infinite hardware test loop: do a ramp 0-4095 to DAC0 of an MP4922 dual dac via SPI
 MainLoop:
 	; increment the 12 bit output value
 	; yes, two bytes = 16 bits, but the top 4 bits will be ignored
 	incfsz  OUTPUT_LO,SAVETOF
 	goto    IncrementDone   ; no overflow,we're done
-	incfsz  OUTPUT_HI,SAVETOF ; overflow, increment the upper
-	goto    IncrementDone   ; no overflow,we're done
-	call    Toggle_LED	; don't care about overflow of upper byte   
+	incf    OUTPUT_HI,SAVETOF ; overflow, increment the upper
+;	goto    IncrementDone   ; no overflow,we're done
+;	call    Toggle_LED	; don't care about overflow of upper byte   
 IncrementDone:
 	btfss	OUTPUT_HI,4	; see if rollover from 0x0F to 0x1F 
 	goto	Continue        ; not set, jump ahead
-	clrf	OUTPUT_HI	; if so reset whole value 
+;	clrf	OUTPUT_HI	; if so reset whole value ( don't bother to to this )
 	; note the above command basically does nothing except 
 	; reset the bits we ignore for MCP4922 purposes
-	call    Toggle_LED	; toggle at peak 
+	
+	; this call works, but do it faster
+	;call    Toggle_LED	; toggle at peak 
+	movlw	BIT7
+	xorwf	LATC,f		; XOR toggles the and bit set in prev value
 Continue:	
 	; output the 12 bit value to the DAC
 	movlw DAC0		    ; output to DAC0
@@ -124,8 +130,9 @@ Continue:
 	goto MainLoop                          ; loop forever
 
 Output2DAC:
-        ; pass in the DAC # via W
-        movwf DACNUMBER
+        ; pass in the DAC # (in bit 7) via 
+	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+        movwf DACNUMBER     
 
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
 	movlb 0		; PORTB
@@ -143,10 +150,11 @@ Output2DAC:
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
-	iorwf DACNUMBER,0 ; clr or set bit based on DAC.  0=save int W 
-	;               ; 0 = unbuffered - bit 14  VREF Input Buffer Control bit
-	iorlw BIT5	; set gain of 1 - bit 13 Output Gain Selection bit
-	iorlw BIT4	; 0x10 - bit 12 SHDN: Output Shutdown Control bit
+	iorwf DACNUMBER,0 ; clr or set bit based on DAC.  0=save into W 
+	; this works, but let's do all of this at the beginning
+;	;               ; 0 = unbuffered - bit 14  VREF Input Buffer Control bit
+;	iorlw BIT5	; set gain of 1 - bit 13 Output Gain Selection bit
+;	iorlw BIT4	; 0x10 - bit 12 SHDN: Output Shutdown Control bit
 	
 	; now W has the commands plus data bits 12-9
 	movwf SSP2BUF	; load the buffer
@@ -166,19 +174,8 @@ WriteByteLoWait:
 	; end of write
 	movlb 0		; PORTB
 	bsf   NOT_CS	; Take ~CS high
-	nop		; settling time
-	
-
-;	; test only, set up a delay for a flashing LED
-;	movlw d'18'	    ;this literal inversely controls flash rate
-;	movwf LOOP_COUNTER_2
-;outerLoop:
-;	call Long_Delay
-;	decfsz LOOP_COUNTER_2
-;	goto outerLoop
-	
-	;call Toggle_LED
-
+	; don't need this here
+;	nop		; settling time
 	return
 
     ; ***** Miscellaneous Routines*********************************************
