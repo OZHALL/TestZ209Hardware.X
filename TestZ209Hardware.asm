@@ -11,7 +11,9 @@
 ;       RC2 - SPI Data Out (MISO) - have to allocate the pin, though we don't use it
 ;       RA0 thru RA7(AN0-AN7) are all faders - analog inputs
 ;       RB0 thru RB4 are outputs driving the LEDs on the faders (0-4)
-;       RC5 thru RC7 are outputs driving the LEDs on the faders (5-7)    
+;       RC5 thru RC7 are outputs driving the LEDs on the faders (5-7)  
+;2018-05-06 ozh - debug outputting to both DAC0 and DAC1    
+    
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -43,13 +45,13 @@
 	LOOP_COUNTER_1
 	LOOP_COUNTER_2
 	LEDCOUNTER
-	DACNUMBER
  ENDC
  ; 0x70-0x7F  Common RAM - Special variables available in all banks
  CBLOCK 0x070
  	; The 12 bit output level
 	OUTPUT_HI
 	OUTPUT_LO
+	DACNUMBER
  ENDC
  
 ;-------------------------------------
@@ -116,6 +118,8 @@ Continue:
 	; output the 12 bit value to the DAC
 	movlw DAC0		    ; output to DAC0
 	call Output2DAC
+	movlw DAC1		    ; output to DAC1
+	call Output2DAC
 	;call Long_Delay
 	goto MainLoop                          ; loop forever
 
@@ -139,7 +143,7 @@ Output2DAC:
 	andlw 0x0F	; we will only want least significant4 bits
 	;for DAC0 or DAC1 - dac # (bit 7) 
 	;                 bit 15 A/B: DACA or DACB Selection bit
-	iorwf DACNUMBER	; clr or set bit based on DAC 
+	iorwf DACNUMBER,0 ; clr or set bit based on DAC.  0=save int W 
 	;               ; 0 = unbuffered - bit 14  VREF Input Buffer Control bit
 	iorlw BIT5	; set gain of 1 - bit 13 Output Gain Selection bit
 	iorlw BIT4	; 0x10 - bit 12 SHDN: Output Shutdown Control bit
@@ -314,6 +318,7 @@ Init_SPI2
 	movlb 3
 ;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
 ;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
+;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
 	movlw 0x40
 	movwf SSP2STAT   ;SSP2STAT = 0x00;
 ;    
