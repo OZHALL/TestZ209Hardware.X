@@ -320,10 +320,10 @@ Init_SPI2
 ;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
 	movlw 0x2A
 	movwf SSP2CON1	;SSP2CON1 = 0x2A;
-;    
+;   
 ;    // SSPADD 24; 
-	movlw 0x07      ; chg clock from 320kHz (0x18) to 1000kHz (0x07)
-	movwf SSP2ADD	;SSP2ADD = 0x07; -- 0x18;
+	movlw 0x02     ;chg to 2 ( 1 did not work)
+	movwf SSP2ADD	;SSP2ADD = 0x02;
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
