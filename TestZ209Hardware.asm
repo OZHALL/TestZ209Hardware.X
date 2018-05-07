@@ -4,6 +4,14 @@
 ;		looks like I broke the funcdtionality.  Need to debug this new code.
 ;2018-05-03 ozh - ANSELC configuration issue.  LEDs are digital pins, not analog
 ;		  code works to flash LED
+;2018-05-06 ozh - once I configured SPI Mode 0, the DAC output works with the following:
+;	RB7 - SPI Data Out (MOSI)
+;       RB6 - SPI Clock
+;       RB5 - SPI /CS (for MCP4922)
+;       RC2 - SPI Data Out (MISO) - have to allocate the pin, though we don't use it
+;       RA0 thru RA7(AN0-AN7) are all faders - analog inputs
+;       RB0 thru RB4 are outputs driving the LEDs on the faders (0-4)
+;       RC5 thru RC7 are outputs driving the LEDs on the faders (5-7)    
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -98,13 +106,13 @@ MainLoop:
 	goto    IncrementDone   ; no overflow,we're done
 	call    Toggle_LED	; don't care about overflow of upper byte   
 IncrementDone:
-	btfss	OUTPUT_HI,5	; see if rollover from 0x0F to 0x1F 
+	btfss	OUTPUT_HI,4	; see if rollover from 0x0F to 0x1F 
 	goto	Continue        ; not set, jump ahead
 	clrf	OUTPUT_HI	; if so reset whole value 
 	; note the above command basically does nothing except 
 	; reset the bits we ignore for MCP4922 purposes
 	call    Toggle_LED	; toggle at peak 
-Continue	
+Continue:	
 	; output the 12 bit value to the DAC
 	movlw DAC0		    ; output to DAC0
 	call Output2DAC
@@ -304,16 +312,18 @@ Init_Ports
 Init_SPI2
 ;    // Set the SPI2 module to the options selected in the User Interface
 	movlb 3
-;    // SMP Middle; CKE Idle to Active; 
-	clrf SSP2STAT   ;SSP2STAT = 0x00;
+;    // SMP Middle; CKE Idle to Active; = 0x00 MODE 1 when CKP Idle:Low, Active:High (not supported by MCP4922)
+;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
+	movlw 0x40
+	movwf SSP2STAT   ;SSP2STAT = 0x00;
 ;    
 ;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
 	movlw 0x2A
 	movwf SSP2CON1	;SSP2CON1 = 0x2A;
 ;    
 ;    // SSPADD 24; 
-	movlw 0x18
-	movwf SSP2ADD	;SSP2ADD = 0x18;
+	movlw 0x07      ; chg clock from 320kHz (0x18) to 1000kHz (0x07)
+	movwf SSP2ADD	;SSP2ADD = 0x07; -- 0x18;
 	return
 	
 ; convert working C code from DualEG (mcc generated) to ASM
