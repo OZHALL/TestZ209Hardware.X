@@ -81,6 +81,8 @@
 #define USEBSR		0x01 ;untested
 #define LEDLAST		0x07 ; last LED on pin 7 of port C
 
+#define GATE_LED0 PORTB,0	; 
+#define GATE_LED1 PORTB,4
  
 RES_VECT  CODE    0x0000            ; processor reset vector
     GOTO    START                   ; go to beginning of program
@@ -97,9 +99,13 @@ START
 	clrf OUTPUT_HI  ; init output var
 	clrf OUTPUT_LO  ;	both bytes
 
-	;BANKSEL 
+	;BANKSEL  
 	movlb 0		; 
-	
+	;Test ONLY Z209 code
+	bsf	GATE_LED0
+	nop	; this seems to be required!!! ozh
+	bsf	GATE_LED1
+	; end test
 ;infinite hardware test loop: do a ramp 0-4095 to DAC0 of an MP4922 dual dac via SPI
 MainLoop:
 	; increment the 12 bit output value
