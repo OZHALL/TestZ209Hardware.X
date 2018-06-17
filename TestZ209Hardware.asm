@@ -17,7 +17,7 @@
 ;2018-05-28 ozh - add "PartyLights" to test each of the LEDs
 ;2018-06-17 ozh - add fader input and route the value to output 1
 ;		* * * we still have a 0.5v bias in the output * * *
-    
+;2018-06-17 ozn - 0.5v is a PCB v1.5 harware error. Vss was NOT connected to ground.    
 ; PIC16F18855 Configuration Bit Settings
 
 ; Assembly source line config statements
@@ -505,13 +505,19 @@ Init_SPI2
 ;    // SMP Middle; CKE Active to Idle; = 0x40 MODE 0 when CKP Idle:Low, Active:High ( IS supported by MCP4922)
 ;       0x20 is same as 0x40, but change clock to FOSC4 (8000kHz).  This was apparently too fast!!!	
 	movlw 0x40
+;	this works with  ;CKP 1	
+;	movlw 0x00	 ;CKE 0  this does NOT work with CKP 0 Idle:Low
 	movwf SSP2STAT   ;SSP2STAT = 0x00;
 ;    
-;    // SSPEN enabled; CKP Idle:Low, Active:High; SSPM FOSC/4_SSPxADD;
-	movlw 0x2A
+;    // SSPEN enabled; CKP Idle:Low, Active:High
+;	movlw 0x2A	;SSPM FOSC/4_SSPxADD
+	movlw 0x22	;SSPM Fosc/64	- works.  No need to set SSP2ADD if we use this
+;	this works with	;CKP 1
+;	movlw 0x32	;CKP 1	Idle:High; SSPM Fosc/64
 	movwf SSP2CON1	;SSP2CON1 = 0x2A;
 ;   
 ;    // SSPADD 24; 
+;    // this is n/a if SSPM Fosc/64 (see SSP2CON1)
 	movlw 0x02     ;chg to 2 ( 1 did not work)
 	movwf SSP2ADD	;SSP2ADD = 0x02;
 	return
