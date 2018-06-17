@@ -15,6 +15,7 @@
 ;2018-05-06 ozh - debug outputting to both DAC0 and DAC1  
 ;2018-05-07 ozh - hand optimize where I can
 ;2018-05-28 ozh - add "PartyLights" to test each of the LEDs
+;2018-06-17 ozh - add fader input and route the value to output 1
     
 ; PIC16F18855 Configuration Bit Settings
 
@@ -47,33 +48,36 @@
 	LOOP_COUNTER_1
 	LOOP_COUNTER_2
 	LEDCOUNTER
+ 	TEMP_2
+	TEMP_3
  ENDC
- ; 0x70-0x7F  Common RAM - Special variables available in all banks
+ ; bank 3
+ CBLOCK 0x120
+ 	OUTPUT_HI
+	OUTPUT_LO 
+ENDC
+; 0x70-0x7F  Common RAM - Special variables available in all banks
  CBLOCK 0x070
 	TEMP						; Useful working storage
 	FLAGS						; See Defines below
 	; The current A/D channel and value
 	ADC_CHANNEL	;0x72
-	ADC_VALUE
-
+	ADC_VALUE	;0x73
+	ADC_VAL64
+	FaderTakeoverFlags
+	FaderFirstTimeFlags
 	; temp variables
-;	WORK_HI		;0x78
-;	WORK_LO
-	OUTPUT_HI	;0x78
-	OUTPUT_LO  
-	DAC_NUMBER	;0x7A
-	LOOP_COUNTER
-	GIE_STATE	;0x7C
-	OVERRUN_FLAG
+	WORK_HI		
+	WORK_LO
+	DAC_NUMBER
+	GIE_STATE	
 	;temp storage
-	TEMP_BSR	;0x7E
+	TEMP_BSR	
 	TEMP_BSR_INTR	;for use in Interrupt ONLY
+	TEMP_INTR
 	TEMP_W_INTR
 	FAKE_PUNCH_EXPO
-	TEMP_2
-	TEMP_3
- ENDC
- 
+ ENDC 
 ;-------------------------------------
 ;	DEFINE STATEMENTS
 ;-------------------------------------
@@ -113,13 +117,13 @@ MAIN_PROG CODE                      ; let linker place main program
 START
 	call Init_Osc
 	call Init_Ports
-
-	; init variables
-	clrf OUTPUT_HI  ; init output var
-	clrf OUTPUT_LO  ;	both bytes
+	call init_ADCC
 
 	;BANKSEL  
 	movlb 0		; 
+	; init variables
+	clrf WORK_HI  ; init output var
+	clrf WORK_LO  ; both bytes
 	;Test ONLY Z209 code
 	bsf	GATE_LED0
 	nop	; this seems to be required!!! ozh
@@ -127,21 +131,22 @@ START
 	; end test
 	call	PartyLights
 	call	PartyLights
-	call	PartyLights
-	call	PartyLights
+;	call	PartyLights
+;	call	PartyLights
 ;infinite hardware test loop: do a ramp 0-4095 to DAC0 of an MP4922 dual dac via SPI
 MainLoop:
+	movlb	D'0'
 	; increment the 12 bit output value
 	; yes, two bytes = 16 bits, but the top 4 bits will be ignored
-	incfsz  OUTPUT_LO,SAVETOF
+	incfsz  WORK_LO,SAVETOF
 	goto    IncrementDone   ; no overflow,we're done
-	incf    OUTPUT_HI,SAVETOF ; overflow, increment the upper
+	incf    WORK_HI,SAVETOF ; overflow, increment the upper
 ;	goto    IncrementDone   ; no overflow,we're done
 ;	call    Toggle_LED	; don't care about overflow of upper byte   
 IncrementDone:
-	btfss	OUTPUT_HI,4	; see if rollover from 0x0F to 0x1F 
+	btfss	WORK_HI,4	; see if rollover from 0x0F to 0x1F 
 	goto	Continue        ; not set, jump ahead
-;	clrf	OUTPUT_HI	; if so reset whole value ( don't bother to to this )
+;	clrf	WORK_HI	; if so reset whole value ( don't bother to to this )
 	; note the above command basically does nothing except 
 	; reset the bits we ignore for MCP4922 purposes
 	
@@ -151,13 +156,41 @@ IncrementDone:
 	xorwf	LATC,f		; XOR toggles the and bit set in prev value
 Continue:	
 	; output the 12 bit value to the DAC
-	movlw DAC0		    ; output to DAC0
-	call Output2DAC
+;	movlw DAC0		    ; output to DAC0
+;	call Output2DAC
+	call Fader2DAC		    ; fader 1 controls the output of output 1
+	
+	; output the counter
+	movlb	D'3'			; bank 3 for OUTPUT_HI/LO
+	movf  WORK_HI, w
+	movwf OUTPUT_HI
+	movf  WORK_LO, w
+	movwf OUTPUT_LO
 	movlw DAC1		    ; output to DAC1
 	call Output2DAC
 	;call Long_Delay
+	
 	goto MainLoop                          ; loop forever
+Fader2DAC:
+	; get the fader 0 value
+	movlw	D'0'			; fader 0
+	call	DoADConversion		; this is the only call to DoADConversion
 
+	; format the 8 bits into a 12 bit format for output
+	movlb	D'3'			; bank 3 for OUTPUT_HI/LO
+	swapf	ADC_VALUE, w		; get the high nibble into the 4 LSBs of w
+	andlw	0x0F
+	movwf	OUTPUT_HI
+	
+	swapf	ADC_VALUE, w		; get the low nibble into the 4 MSBs of w
+	andlw	0xF0
+	movwf	OUTPUT_LO
+	
+	movlw DAC0		    ; output to DAC1
+	call Output2DAC
+	return
+	
+	
 Output2DAC:
         ; pass in the DAC # (in bit 7) via 
 	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
@@ -219,6 +252,39 @@ Is_Off					; Executes if the LED is off
 	return
 Is_On					; Executes if the LED is on
 	bcf PORTC, LEDLAST
+	return
+;----------------------------------------
+;	Analogue to Digital conversion subroutine
+; This is used by the main code loop
+;----------------------------------------
+DoADConversion:
+	movlb	D'1'				; Bank 1
+	; set the ADC channel
+	;movwf	ADCON0
+	movwf	ADPCH				;ADC Positive Channel Selection
+
+	; Short delay whilst the channel settles
+	movlw   D'50'			;TODO: do we need to increase this with the faster clock of 16F18855?
+;   This did NOT seem to make a lot of difference
+;	movlw   D'100'			;increase this cuz the faster clock of 16F18855
+	movwf   TEMP
+	decfsz  TEMP, f
+	bra	$-1
+
+	; Start the conversion
+	bsf	ADCON0, ADGO		;GO_NOT_DONE
+	; Wait for it to finish
+	btfsc	ADCON0, ADGO		;GO_NOT_DONE	; Is it done?
+	bra		$-1
+
+	;  Read the ADC Value and store it
+	movf	ADRESH, w
+	movwf	ADC_VALUE
+	;   create a 64 bit resolution version for takeover comparison
+	movwf	ADC_VAL64
+	lsrf	ADC_VAL64,f	; TODO: would this be faster if I shifted in W and then stored?
+	lsrf	ADC_VAL64,f
+	movlb	D'0'				; Bank 0
 	return
 
 ; -----------------------------------------------------------------------
@@ -338,6 +404,98 @@ Init_Ports
 	movlb 0		; reset to bank 0
 	return
 	
+
+;   Copy initialization from a known good MCC generated config (PTL30_fader_DualEGv2_5_4
+;
+init_ADCC:
+;void ADCC_Initialize(void)
+;{
+    movlb   D'1'	    ; bank 1 has all AD core regs
+;    // set the ADCC to the options selected in the User Interface
+;    // ADDSEN disabled; ADGPOL digital_low; ADIPEN disabled; ADPPOL VSS; 
+;    ADCON1 = 0x00;
+    movlw   0x00
+    movwf   ADCON1
+;    // ADCRS 0; ADMD Burst_average_mode; ADACLR disabled; ADPSIS ADFLTR; 
+;    ADCON2 = 0x03;
+    movlw   0x03
+    movwf   ADCON2
+;    // ADCALC First derivative of Single measurement; ADTMD disabled; ADSOI ADGO not cleared; 
+;    ADCON3 = 0x00;
+    movlw   0x00
+    movwf   ADCON3
+;    // ADACT disabled; 
+;    ADACT = 0x00;
+    movlw   0x00
+    movwf   ADACT
+;    // ADAOV ACC or ADERR not Overflowed; 
+;    ADSTAT = 0x00;
+    movlw   0x00
+    movwf   ADSTAT
+;    // ADCCS FOSC/128; 
+;    ADCLK = 0x3F;
+    movlw   0x3F
+    movwf   ADCLK
+;    // ADNREF VSS; ADPREF VDD; 
+;    ADREF = 0x00;
+    movlw   0x00
+    movwf   ADREF
+;    // ADCAP Additional uC disabled; 
+;    ADCAP = 0x00;
+    movlw   0x00
+    movwf   ADCAP
+;    // ADPRE 0; 
+;    ADPRE = 0x00;
+    movlw   0x00
+    movwf   ADPRE
+;    // ADACQ 10; 
+;    ADACQ = 0x0A;
+    movlw   0x0A
+    movwf   ADACQ
+;    // ADPCH ANA0; 
+;    ADPCH = 0x00;
+    movlw   0x00
+    movwf   ADPCH
+;   next bank
+    movlb   D'2'
+;    // ADRPT 0; 
+;    ADRPT = 0x00;
+    movlw   0x00
+    movwf   ADRPT
+;    // ADLTHL 0; 
+;    ADLTHL = 0x00;
+    movlw   0x00
+    movwf   ADLTHL
+;    // ADLTHH 0; 
+;    ADLTHH = 0x00;
+    movlw   0x00
+    movwf   ADLTHH
+;    // ADUTHL 0; 
+;    ADUTHL = 0x00;
+    movlw   0x00
+    movwf   ADUTHL
+;    // ADUTHH 0; 
+;    ADUTHH = 0x00;
+    movlw   0x00
+    movwf   ADUTHH
+;    // ADSTPTL 0; 
+;    ADSTPTL = 0x00;
+    movlw   0x00
+    movwf   ADSTPTL
+;    // ADSTPTH 0; 
+;    ADSTPTH = 0x00;
+    movlw   0x00
+    movwf   ADSTPTH
+;    
+;   back to bank 1
+    movlb   D'1'
+;    // ADGO stop; ADFM right; ADON enabled; ADCONT disabled; ADCS FOSC/ADCLK; 
+;    ADCON0 = 0x84;
+;   note: make (bit 2) ADFRM0=0 (left justified), not right
+    movlw   0x80
+    movwf   ADCON0
+;}
+	return	
 ; convert working C code from DualEG (mcc generated) to ASM
 Init_SPI2
 ;    // Set the SPI2 module to the options selected in the User Interface
