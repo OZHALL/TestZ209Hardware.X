@@ -16,6 +16,7 @@
 ;2018-05-07 ozh - hand optimize where I can
 ;2018-05-28 ozh - add "PartyLights" to test each of the LEDs
 ;2018-06-17 ozh - add fader input and route the value to output 1
+;		* * * we still have a 0.5v bias in the output * * *
     
 ; PIC16F18855 Configuration Bit Settings
 
@@ -193,7 +194,7 @@ Fader2DAC:
 	
 Output2DAC:
         ; pass in the DAC # (in bit 7) via 
-	iorlw 0x30	    ;bit 6=0 (n/a); bit 5=1(GAin x1); bit 4=1 (/SHDN)
+  	iorlw 0x30	    ;bit 6=0 (Vref Input buffer off); bit 5=1(GAin x1); bit 4=1 (/SHDN)
         movwf DAC_NUMBER     
 
 	; output the OUTPUT_HI and OUTPUT_LO to the DAC# (0 or 1) specified in W
