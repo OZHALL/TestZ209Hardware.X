@@ -518,7 +518,7 @@ Init_SPI2
 ;   
 ;    // SSPADD 24; 
 ;    // this is n/a if SSPM Fosc/64 (see SSP2CON1)
-	movlw 0x02     ;chg to 2 ( 1 did not work)
+	movlw 0x13 
 	movwf SSP2ADD	;SSP2ADD = 0x02;
 	return
 	
